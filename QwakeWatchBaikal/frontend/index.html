@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>QuakeWatchBaikal — ГИС Анализа</title>
+    <!-- Подключаем стили и скрипты карты Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com" />
+    <script src="https://unpkg.com"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Авторизация по центру */
+        .auth-screen { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; background: #e9ecef; }
+        .auth-container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 320px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #666; font-size: 14px; }
+        .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        
+        /* Главный интерфейс приложения */
+        .app-screen { display: flex; width: 100vw; height: 100vh; }
+        
+        /* Левая панель (FR-2) */
+        .sidebar { width: 350px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; box-shadow: 2px 0 5px rgba(0,0,0,0.05); z-index: 1000; }
+        .sidebar-header { padding: 15px; background: #007bff; color: white; margin: 0; font-size: 18px; text-align: center; }
+        .sidebar-content { padding: 20px; flex-grow: 1; overflow-y: auto; }
+        
+        /* Правая часть — Карта (FR-3) */
+        .map-container { flex-grow: 1; height: 100%; position: relative; }
+        #map { width: 100%; height: 100%; }
+        
+        /* Кнопки и элементы управления */
+        button { width: 100%; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 5px; margin-bottom: 5px; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-primary:hover { background: #0056b3; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; color: white; padding: 8px; font-size: 13px; }
+        
+        .section-title { font-size: 14px; font-weight: bold; color: #333; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        .hidden { display: none !important; }
+        #auth-msg { text-align: center; font-weight: bold; color: #dc3545; margin-top: 10px; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+<!-- ЭКРАН АВТОРИЗАЦИИ (FR-1) -->
+<div id="auth-screen" class="auth-screen">
+    <div class="auth-container">
+        <h3 style="text-align: center; margin-top:0;">Вход в QuakeWatch</h3>
+        <div class="form-group">
+            <label>Логин</label>
+            <input type="text" id="username" placeholder="Ваш логин">
+        </div>
+        <div class="form-group">
+            <label>Пароль</label>
+            <input type="password" id="password" placeholder="Ваш пароль">
+        </div>
+        <button class="btn-primary" onclick="handleAuth('login')">Войти</button>
+        <button style="background:#6c757d; color:white;" onclick="handleAuth('register')">Регистрация</button>
+        <div id="auth-msg"></div>
+    </div>
+</div>
+
+<!-- ГЛАВНЫЙ ИНТЕРФЕЙС ГИС (FR-2 + FR-3) -->
+<div id="app-screen" class="app-screen hidden">
+    
+    <!-- Панель управления слева (FR-2) -->
+    <div class="sidebar">
+        <div class="sidebar-header">QuakeWatchBaikal</div>
+        <div class="sidebar-content">
+            
+            <button class="btn-success" onclick="seedData()">⚡ 1. Инициализировать каталоги БД</button>
+            
+            <div class="section-title">Загрузка каталогов</div>
+            <button class="btn-primary" onclick="loadDataFromDB()">🔄 Загрузить данные на карту</button>
+            
+            <div class="section-title">Выбор интервала времени</div>
+            <div class="form-group">
+                <label>Начало интервала</label>
+                <input type="datetime-local" id="start-date" value="2026-11-01T00:00">
+            </div>
+            <div class="form-group">
+                <label>Конец интервала</label>
+                <input type="datetime-local" id="end-date" value="2026-11-10T23:59">
+            </div>
+            
+            <div class="section-title">Фильтрация по классам (К)</div>
+            <div class="form-group">
+                <label>Минимальный энерг. класс</label>
+                <input type="number" id="min-class" step="0.5" value="8.0" placeholder="Например, 10">
+            </div>
+            
+            <button class="btn-primary" style="background:#17a2b8; margin-top:15px;" onclick="loadDataFromDB()">Применить фильтры</button>
+            
+            <div style="margin-top: 30px;">
+                <button class="btn-danger" onclick="logout()">Выйти из системы</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Интерактивная карта справа (FR-3) -->
+    <div class="map-container">
+        <div id="map"></div>
+    </div>
+
+</div>
+
+<script>
+    const API_URL = 'http://localhost:8000/api';
+    let map;
+    let markersLayer = L.layerGroup();
+    let faultsLayer = L.layerGroup();
+
+    window.onload = function() {
+        const token = localStorage.getItem('token');
+        if (token) { showApp(); }
+    };
+
+    // Авторизация
+    async function handleAuth(type) {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const msg = document.getElementById('auth-msg');
+        msg.innerText = '';
+
+        if (!username || !password) { msg.innerText = 'Заполните поля'; return; }
+
+        try {
+            const res = await fetch(`${API_URL}/${type}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                if (type === 'login') {
+                    localStorage.setItem('token', data.access_token);
+                    showApp();
+                } else {
+                    msg.style.color = 'green';
+                    msg.innerText = 'Регистрация успешна! Войдите.';
+                }
+            } else { msg.style.color = 'red'; msg.innerText = data.detail || 'Ошибка'; }
+        } catch (e) { msg.innerText = 'Ошибка соединения с бэком'; }
+    }
+
+    function showApp() {
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('app-screen').classList.remove('hidden');
+        initMap();
+    }
+
+    function logout() {
+        localStorage.removeItem('token');
+        location.reload();
+    }
+
+    // Инициализация карты Leaflet центрированной на озеро Байкал
+    function initMap() {
+        if (map) return;
+        map = L.map('map').setView([53.5, 108.0], 6); // Координаты центра Байкала
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        markersLayer.addTo(map);
+        faultsLayer.addTo(map);
+    }
+
+    // Первичная генерация тест-данных в БД
+    async function seedData() {
+        try {
+            const res = await fetch(`${API_URL}/debug/seed`, { method: 'POST' });
+            const data = await res.json();
+            alert(data.message);
+            loadDataFromDB();
+        } catch (e) { alert('Ошибка соединения'); }
+    }
+
+    // Загрузка данных с бэка с учетом фильтров и отрисовка на карте
+    async function loadDataFromDB() {
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        const minClass = document.getElementById('min-class').value;
+
+        markersLayer.clearLayers();
+        faultsLayer.clearLayers();
+
+        try {
+            // 1. Загрузка отфильтрованных землетрясений
+            const eqRes = await fetch(`${API_URL}/earthquakes?start_date=${startDate}&end_date=${endDate}&min_class=${minClass}`);
+            const earthquakes = await eqRes.json();
+            
+            earthquakes.forEach(eq => {
+                // Размер круга зависит от энергетического класса землетрясения
+                const radius = Math.max(eq.energy_class * 2, 10);
+                const marker = L.circleMarker([eq.latitude, eq.longitude], {
+                    radius: radius,
+                    color: eq.energy_class >= 13 ? 'red' : 'orange',
+                    fillColor: eq.energy_class >= 13 ? '#f03' : '#ff7800',
+                    fillOpacity: 0.6
+                }).bindPopup(`
+                    <b>Землетрясение</b><br>
+                    Время: ${new Date(eq.time).toLocaleString()}<br>
+                    Класс (К): ${eq.energy_class}<br>
+                    Магнитуда: ${eq.magnitude || 'Н/Д'}<br>
+                    Глубина: ${eq.depth} км
+                `);
+                markersLayer.addLayer(marker);
+            });
+
+            // 2. Загрузка линий разломов
+            const faultRes = await fetch(`${API_URL}/faults`);
+            const faults = await faultRes.json();
+            
+            faults.forEach(f => {
+                const coordinates = JSON.parse(f.geometry);
+                const polyline = L.polyline(coordinates, {
+                    color: 'red',
+                    weight: 3,
+                    opacity: 0.8
+                }).bindPopup(`<b>Разлом:</b> ${f.name}`);
+                faultsLayer.addLayer(polyline);
+            });
+
+        } catch (e) {
+            alert('Не удалось загрузить данные с бэкенда.');
+        }
+    }
+</script>
+</body>
+</html>
