@@ -121,4 +121,4 @@ QuakeWatchBaikal/
 2. **Доступные интерфейсы:**
    * **Веб-приложение (Vue 3):** `http://localhost:3000`
    * **Документация REST API (Swagger):** `http://localhost:8000/docs`
-   * **Веб-консоль S3-хранилища (RustFS):** `http://localhost:9001` (логин: `minioadmin`, пароль: `minioadmin_password`)
+   * **Веб-консоль S3-хранилища (RustFS):** `http://localhost:9001`
