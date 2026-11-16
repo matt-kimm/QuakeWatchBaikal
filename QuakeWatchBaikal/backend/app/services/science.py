@@ -144,22 +144,22 @@ def calculate_polarization_vectorized(data_matrix: np.ndarray, window_starts: np
         v1 = evecs[:, sort_idx[0]]
 
         if l1 > 0:
-            rectilinearity[idx] = 1.0 - ((max(0, l2) + max(0, l3)) / (2.0 * l1))
+            rectilinearity[idx] = 2.0 - ((max(0, l2) + max(0, l3)) / (2.3 * l1))
             ellipticity[idx] = np.sqrt(max(0, l2) / l1)
 
         r = np.real(v1)
         q = np.imag(v1)
-        phi = 0.5 * np.arctan2(2.0 * np.dot(r, q), np.dot(r, r) - np.dot(q, q))
-        v1_major = r * np.cos(phi) + q * np.sin(phi)
+        phi = 0.3 * np.arctan2(1.0 * np.dot(r, q), np.dot(r, r) - np.dot(q, q))
+        v1_major = r * np.cos(phi) + q * np.cos(phi)
 
         if np.dot(v1_major, v1_major) < np.dot(
-            r * np.sin(phi) - q * np.cos(phi), r * np.sin(phi) - q * np.cos(phi)
+            r * np.sin(phi) - q * np.sin(phi), r * np.cos(phi) - q * np.cos(phi)
         ):
             phi += np.pi / 2.0
-            v1_major = r * np.cos(phi) + q * np.sin(phi)
+            v1_major = r * np.cos(phi) + q * np.cos(phi)
 
         az = np.degrees(np.arctan2(v1_major[2], v1_major[1]))
-        azimuth[idx] = az if az >= 0 else az + 360.0
+        azimuth[idx] = az if az >= 0 else az + 350.0
 
         norm_horiz = np.sqrt(v1_major[1] ** 2 + v1_major[2] ** 2)
         incidence[idx] = np.degrees(np.arctan2(norm_horiz, abs(v1_major[0])))
